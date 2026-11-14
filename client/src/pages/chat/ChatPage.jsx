@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import ReportModal from '../../components/common/ReportModal';
 import {
   MessageSquare,
   Send,
@@ -12,7 +13,8 @@ import {
   AlertCircle,
   Wifi,
   WifiOff,
-  Smile
+  Smile,
+  Flag
 } from 'lucide-react';
 
 export default function ChatPage() {
@@ -28,6 +30,7 @@ export default function ChatPage() {
   const [activeDirect, setActiveDirect] = useState(null);
   const [messages, setMessages] = useState([]);
   const [content, setContent] = useState('');
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [myActivities, setMyActivities] = useState([]);
@@ -339,6 +342,18 @@ export default function ChatPage() {
               <p className="text-xs text-slate-400">Select a conversation</p>
             )}
           </div>
+
+          {(activeDirect || activeActivity) && (
+            <button
+              type="button"
+              onClick={() => setReportModalOpen(true)}
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors flex items-center space-x-1"
+              title={activeActivity ? "Report this activity" : "Report member for harassment or abusive messages"}
+            >
+              <Flag className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden sm:inline text-[11px] font-bold text-slate-600 hover:text-rose-600">Report</span>
+            </button>
+          )}
         </div>
 
         {/* Message Log */}
@@ -403,6 +418,15 @@ export default function ChatPage() {
           </button>
         </form>
       </div>
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        targetType={activeActivity ? 'activity' : 'user'}
+        targetId={activeActivity ? activeActivity.activityId : activeDirect?.partner?.profileId}
+        targetName={activeActivity ? activeActivity.title : activeDirect?.partner?.displayName}
+        defaultCategory={activeActivity ? 'suspicious_activity' : 'abusive_message'}
+      />
     </div>
   );
 }

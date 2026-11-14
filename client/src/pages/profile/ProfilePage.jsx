@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Badge from '../../components/common/Badge';
+import ReportModal from '../../components/common/ReportModal';
 import {
   User,
   MapPin,
@@ -28,6 +29,7 @@ export default function ProfilePage() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -117,6 +119,15 @@ export default function ProfilePage() {
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Chat</span>
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="flex items-center justify-center space-x-1 px-3 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 rounded-btn text-xs font-bold transition-colors border border-slate-200"
+                  title="Report this member for fake profile, harassment, or safety concerns"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  <span>Report</span>
+                </button>
               </div>
             )}
           </div>
@@ -191,6 +202,14 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        targetType="user"
+        targetId={profile?.profileId}
+        targetName={profile?.displayName}
+      />
     </div>
   );
 }

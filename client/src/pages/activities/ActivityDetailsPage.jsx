@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Badge from '../../components/common/Badge';
+import ReportModal from '../../components/common/ReportModal';
 import {
   Calendar,
   Clock,
@@ -16,7 +17,8 @@ import {
   UserX,
   AlertCircle,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  Flag
 } from 'lucide-react';
 
 export default function ActivityDetailsPage() {
@@ -29,6 +31,7 @@ export default function ActivityDetailsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const loadActivity = async () => {
     try {
@@ -83,6 +86,30 @@ export default function ActivityDetailsPage() {
       setError('Failed to update membership request.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleAdminCancel = async () => {
+    const reason = window.prompt('Document reason for cancelling fraudulent or unsafe activity:');
+    if (!reason) return;
+    try {
+      await api.post(`/admin/activities/${id}/cancel`, { reason });
+      setSuccessMsg('Activity cancelled by moderation.');
+      loadActivity();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to cancel activity.');
+    }
+  };
+
+  const handleAdminRemove = async () => {
+    const reason = window.prompt('Document reason for removing inappropriate activity:');
+    if (!reason) return;
+    try {
+      await api.post(`/admin/activities/${id}/remove`, { reason });
+      setSuccessMsg('Activity removed by moderation.');
+      loadActivity();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to remove activity.');
     }
   };
 
@@ -145,7 +172,7 @@ export default function ActivityDetailsPage() {
         {/* Header Tags */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <Badge variant="primary">{activity.categoryName || activity.category}</Badge>
-          <div className="flex items-center space-x-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-semibold text-slate-500">
               Policy: {activity.joinPolicy === 'auto_join' ? 'Instant Auto-Join' : 'Host Approval'}
             </span>
@@ -153,8 +180,48 @@ export default function ActivityDetailsPage() {
             <span className={`font-semibold capitalize ${activity.status === 'open' ? 'text-emerald-600' : 'text-slate-500'}`}>
               Status: {activity.status}
             </span>
+            {!isHost && (
+              <>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="text-rose-600 hover:text-rose-700 font-bold flex items-center space-x-1"
+                  title="Report suspicious, fraudulent or unsafe activity"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  <span>Report Activity</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Admin Moderation Controls if Admin */}
+        {user?.role === 'admin' && (
+          <div className="mb-4 p-3 bg-amber-50 rounded-btn border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center space-x-1.5 font-bold text-amber-900">
+              <Shield className="w-4 h-4 text-amber-700" />
+              <span>Admin Moderation Controls</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleAdminCancel}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[11px] transition-colors"
+              >
+                Cancel (Fraudulent/Unsafe)
+              </button>
+              <button
+                type="button"
+                onClick={handleAdminRemove}
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[11px] transition-colors"
+              >
+                Remove Inappropriate
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Title */}
         <h1 className="text-2xl sm:text-3xl font-black text-navy mb-4 leading-tight">
@@ -362,6 +429,15 @@ export default function ActivityDetailsPage() {
           ))}
         </div>
       </div>
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        targetType="activity"
+        targetId={activity?.activityId}
+        targetName={activity?.title}
+        defaultCategory="suspicious_activity"
+      />
     </div>
   );
 }

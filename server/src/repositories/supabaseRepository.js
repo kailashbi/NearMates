@@ -561,14 +561,335 @@ export class SupabaseRepository extends IRepository {
     return true;
   }
 
-  async getAdminStats() {
-    const usersCount = await this.pool.query('SELECT COUNT(*) FROM users');
-    const actCount = await this.pool.query('SELECT COUNT(*) FROM activities');
-    const revCount = await this.pool.query('SELECT COUNT(*) FROM reviews');
+  async listUsers(filters = {}) {
+    let query = `
+      SELECT u.user_id as "userId", u.email, u.role, u.status, u.warning_count as "warningCount",
+             u.ban_reason as "banReason", u.suspended_until as "suspendedUntil", u.suspension_reason as "suspensionReason",
+             u.last_active_at as "lastActiveAt", u.created_at as "createdAt",
+             p.profile_id as "profileId", p.display_name as "displayName", p.avatar_url as "avatarUrl",
+             p.location_name as "locationName", p.rating, p.review_count as "reviewCount",
+             (SELECT COUNT(*) FROM reports r WHERE r.reported_profile_id = p.profile_id) as "reportsCount"
+      FROM users u
+      LEFT JOIN profiles p ON p.user_id = u.user_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (filters.search) {
+      params.push(`%${filters.search.toLowerCase()}%`);
+      query += ` AND (LOWER(p.display_name) LIKE $${params.length} OR LOWER(u.email) LIKE $${params.length})`;
+    }
+    if (filters.status && filters.status !== 'all') {
+      params.push(filters.status);
+      query += ` AND u.status = $${params.length}`;
+    }
+    if (filters.role && filters.role !== 'all') {
+      params.push(filters.role);
+      query += ` AND u.role = $${params.length}`;
+    }
+    query += ` ORDER BY u.created_at DESC`;
+
+    const res = await this.pool.query(query, params);
+    let rows = res.rows.map(r => ({ ...r, reportsCount: parseInt(r.reportsCount) || 0 }));
+    if (filters.reportedOnly === 'true' || filters.reportedOnly === true) {
+      rows = rows.filter(r => r.reportsCount > 0);
+    }
+    return rows;
+  }
+
+  async banUser(userId, reason, adminId = null) {
+    await this.pool.query(
+      `UPDATE users SET status = 'banned', ban_reason = $1, is_active = false, updated_at = NOW() WHERE user_id = $2`,
+      [reason, userId]
+    );
+    const profileRes = await this.pool.query(`SELECT profile_id FROM profiles WHERE user_id = $1`, [userId]);
+    if (profileRes.rows[0]) {
+      await this.createNotification({
+        recipientProfileId: profileRes.rows[0].profile_id,
+        type: 'account_banned',
+        title: 'Account Permanently Banned',
+        message: `Your account was permanently banned by moderation. Reason: ${reason}`
+      });
+    }
+    return this.findUserById(userId);
+  }
+
+  async suspendUser(userId, suspendedUntil, reason, adminId = null) {
+    await this.pool.query(
+      `UPDATE users SET status = 'suspended', suspended_until = $1, suspension_reason = $2, updated_at = NOW() WHERE user_id = $3`,
+      [suspendedUntil, reason, userId]
+    );
+    const profileRes = await this.pool.query(`SELECT profile_id FROM profiles WHERE user_id = $1`, [userId]);
+    if (profileRes.rows[0]) {
+      await this.createNotification({
+        recipientProfileId: profileRes.rows[0].profile_id,
+        type: 'account_suspended',
+        title: 'Account Suspended',
+        message: `Your account is suspended until ${new Date(suspendedUntil).toLocaleDateString()}. Reason: ${reason}`
+      });
+    }
+    return this.findUserById(userId);
+  }
+
+  async unsuspendUser(userId) {
+    await this.pool.query(
+      `UPDATE users SET status = 'active', suspended_until = NULL, suspension_reason = NULL, ban_reason = NULL, is_active = true, updated_at = NOW() WHERE user_id = $1`,
+      [userId]
+    );
+    const profileRes = await this.pool.query(`SELECT profile_id FROM profiles WHERE user_id = $1`, [userId]);
+    if (profileRes.rows[0]) {
+      await this.createNotification({
+        recipientProfileId: profileRes.rows[0].profile_id,
+        type: 'account_reactivated',
+        title: 'Account Reinstated',
+        message: 'Your account status has been restored to active standing.'
+      });
+    }
+    return this.findUserById(userId);
+  }
+
+  async warnUser(userId, reason, adminId = null) {
+    const res = await this.pool.query(
+      `UPDATE users SET warning_count = COALESCE(warning_count, 0) + 1, updated_at = NOW() WHERE user_id = $1 RETURNING warning_count`,
+      [userId]
+    );
+    const count = res.rows[0]?.warning_count || 1;
+    const profileRes = await this.pool.query(`SELECT profile_id FROM profiles WHERE user_id = $1`, [userId]);
+    if (profileRes.rows[0]) {
+      await this.createNotification({
+        recipientProfileId: profileRes.rows[0].profile_id,
+        type: 'moderation_warning',
+        title: `Formal Moderation Warning (${count}/3)`,
+        message: `Warning issued by moderation: ${reason}`
+      });
+    }
+    return this.findUserById(userId);
+  }
+
+  async listActivitiesAdmin(filters = {}) {
+    let query = `
+      SELECT a.activity_id as "activityId", a.host_profile_id as "hostProfileId",
+             a.title, a.description, a.category_id as "categoryId", i.name as "categoryName",
+             a.location_name as "locationName", a.starts_at as "startsAt", a.ends_at as "endsAt",
+             a.max_participants as "maxParticipants", a.status, a.cancellation_reason as "cancellationReason",
+             a.moderation_notes as "moderationNotes", a.created_at as "createdAt",
+             p.display_name as "hostName", p.avatar_url as "hostAvatar", u.email as "hostEmail",
+             (SELECT COUNT(*) FROM activity_memberships m WHERE m.activity_id = a.activity_id AND m.status = 'approved') + 1 as "approvedParticipantsCount",
+             (SELECT COUNT(*) FROM activity_memberships m WHERE m.activity_id = a.activity_id AND m.status = 'requested') as "pendingRequestsCount",
+             (SELECT COUNT(*) FROM reports r WHERE r.activity_id = a.activity_id) as "reportsCount"
+      FROM activities a
+      LEFT JOIN profiles p ON p.profile_id = a.host_profile_id
+      LEFT JOIN users u ON u.user_id = p.user_id
+      LEFT JOIN interests i ON i.interest_id = a.category_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (filters.search) {
+      params.push(`%${filters.search.toLowerCase()}%`);
+      query += ` AND (LOWER(a.title) LIKE $${params.length} OR LOWER(a.location_name) LIKE $${params.length} OR LOWER(i.name) LIKE $${params.length})`;
+    }
+    if (filters.status && filters.status !== 'all') {
+      params.push(filters.status);
+      query += ` AND a.status = $${params.length}`;
+    }
+    if (filters.category && filters.category !== 'all') {
+      params.push(filters.category);
+      query += ` AND a.category_id = $${params.length}`;
+    }
+    query += ` ORDER BY a.created_at DESC`;
+
+    const res = await this.pool.query(query, params);
+    return res.rows.map(r => ({
+      ...r,
+      approvedParticipantsCount: parseInt(r.approvedParticipantsCount) || 1,
+      pendingRequestsCount: parseInt(r.pendingRequestsCount) || 0,
+      reportsCount: parseInt(r.reportsCount) || 0
+    }));
+  }
+
+  async getActivityWithParticipants(activityId) {
+    const actRes = await this.pool.query(
+      `SELECT a.*, p.display_name as "hostName", p.avatar_url as "hostAvatar", u.email as "hostEmail"
+       FROM activities a
+       LEFT JOIN profiles p ON p.profile_id = a.host_profile_id
+       LEFT JOIN users u ON u.user_id = p.user_id
+       WHERE a.activity_id = $1`,
+      [activityId]
+    );
+    if (!actRes.rows[0]) return null;
+
+    const memRes = await this.pool.query(
+      `SELECT m.membership_id as "membershipId", m.role, m.status, m.requested_at as "requestedAt",
+              p.profile_id as "profileId", p.display_name as "displayName", p.avatar_url as "avatarUrl", p.rating, u.email
+       FROM activity_memberships m
+       JOIN profiles p ON p.profile_id = m.profile_id
+       JOIN users u ON u.user_id = p.user_id
+       WHERE m.activity_id = $1`,
+      [activityId]
+    );
+
+    const repRes = await this.pool.query(
+      `SELECT r.report_id as "reportId", r.reason, r.category, r.description, r.status, r.created_at as "createdAt"
+       FROM reports r WHERE r.activity_id = $1`,
+      [activityId]
+    );
+
     return {
-      totalUsers: parseInt(usersCount.rows[0]?.count) || 0,
-      totalActivities: parseInt(actCount.rows[0]?.count) || 0,
-      totalReviews: parseInt(revCount.rows[0]?.count) || 0
+      activity: actRes.rows[0],
+      participants: memRes.rows,
+      reports: repRes.rows
+    };
+  }
+
+  async moderateActivity(activityId, action, reason, adminId = null) {
+    const status = action === 'remove' ? 'removed' : 'cancelled';
+    const noteCol = action === 'remove' ? 'moderation_notes' : 'cancellation_reason';
+    await this.pool.query(
+      `UPDATE activities SET status = $1, ${noteCol} = $2, updated_at = NOW() WHERE activity_id = $3`,
+      [status, reason, activityId]
+    );
+
+    const act = (await this.pool.query(`SELECT host_profile_id, title FROM activities WHERE activity_id = $1`, [activityId])).rows[0];
+    if (act) {
+      await this.createNotification({
+        recipientProfileId: act.host_profile_id,
+        type: 'activity_moderated',
+        title: action === 'remove' ? 'Activity Removed by Moderation' : 'Activity Cancelled by Moderation',
+        message: `Your activity "${act.title}" was ${action === 'remove' ? 'removed for guidelines violation' : 'cancelled'}. Reason: ${reason}`,
+        activityId
+      });
+    }
+
+    return true;
+  }
+
+  async createReport(reportData) {
+    const res = await this.pool.query(
+      `INSERT INTO reports (reporter_profile_id, reported_profile_id, activity_id, category, reason, description, evidence_url, evidence_text, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+       RETURNING report_id as "reportId", category, reason, description, status, created_at as "createdAt"`,
+      [
+        reportData.reporterProfileId,
+        reportData.reportedProfileId || null,
+        reportData.activityId || null,
+        reportData.category || 'other',
+        reportData.reason,
+        reportData.description || null,
+        reportData.evidenceUrl || null,
+        reportData.evidenceText || null
+      ]
+    );
+    return res.rows[0];
+  }
+
+  async listReports(filters = {}) {
+    let query = `
+      SELECT r.report_id as "reportId", r.reporter_profile_id as "reporterProfileId",
+             rp.display_name as "reporterName", rp.avatar_url as "reporterAvatar",
+             r.reported_profile_id as "reportedProfileId",
+             tp.display_name as "reportedName", tp.avatar_url as "reportedAvatar",
+             r.activity_id as "activityId", a.title as "activityTitle",
+             r.category, r.reason, r.description, r.evidence_url as "evidenceUrl",
+             r.evidence_text as "evidenceText", r.status, r.admin_notes as "adminNotes",
+             r.action_taken as "actionTaken", r.moderated_at as "moderatedAt", r.created_at as "createdAt"
+      FROM reports r
+      LEFT JOIN profiles rp ON rp.profile_id = r.reporter_profile_id
+      LEFT JOIN profiles tp ON tp.profile_id = r.reported_profile_id
+      LEFT JOIN activities a ON a.activity_id = r.activity_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (filters.status && filters.status !== 'all') {
+      params.push(filters.status);
+      query += ` AND r.status = $${params.length}`;
+    }
+    if (filters.category && filters.category !== 'all') {
+      params.push(filters.category);
+      query += ` AND r.category = $${params.length}`;
+    }
+    query += ` ORDER BY r.created_at DESC`;
+
+    const res = await this.pool.query(query, params);
+    return res.rows;
+  }
+
+  async getReportById(reportId) {
+    const res = await this.pool.query(
+      `SELECT r.report_id as "reportId", r.reporter_profile_id as "reporterProfileId",
+              rp.display_name as "reporterName", rp.avatar_url as "reporterAvatar",
+              r.reported_profile_id as "reportedProfileId",
+              tp.display_name as "reportedName", tp.avatar_url as "reportedAvatar",
+              r.activity_id as "activityId", a.title as "activityTitle",
+              r.category, r.reason, r.description, r.evidence_url as "evidenceUrl",
+              r.evidence_text as "evidenceText", r.status, r.admin_notes as "adminNotes",
+              r.action_taken as "actionTaken", r.moderated_at as "moderatedAt", r.created_at as "createdAt"
+       FROM reports r
+       LEFT JOIN profiles rp ON rp.profile_id = r.reporter_profile_id
+       LEFT JOIN profiles tp ON tp.profile_id = r.reported_profile_id
+       LEFT JOIN activities a ON a.activity_id = r.activity_id
+       WHERE r.report_id = $1`,
+      [reportId]
+    );
+    return res.rows[0] || null;
+  }
+
+  async updateReportStatus(reportId, status) {
+    const res = await this.pool.query(
+      `UPDATE reports SET status = $1, updated_at = NOW() WHERE report_id = $2 RETURNING *`,
+      [status, reportId]
+    );
+    return res.rows[0];
+  }
+
+  async resolveReport(reportId, updateData) {
+    const res = await this.pool.query(
+      `UPDATE reports
+       SET status = $1, admin_notes = $2, action_taken = $3, moderated_by = $4, moderated_at = NOW(), updated_at = NOW()
+       WHERE report_id = $5
+       RETURNING report_id as "reportId", status, admin_notes as "adminNotes", action_taken as "actionTaken"`,
+      [
+        updateData.status || 'resolved',
+        updateData.adminNotes || null,
+        updateData.actionTaken || 'none',
+        updateData.moderatedBy || null,
+        reportId
+      ]
+    );
+    return res.rows[0];
+  }
+
+  async getAdminStats() {
+    const [uTotal, uDaily, uWeekly, uMonthly, uSuspended, uBanned, aTotal, aOpen, aCompleted, aCancelled, aRemoved, rTotal, repTotal, repPending] = await Promise.all([
+      this.pool.query('SELECT COUNT(*) FROM users'),
+      this.pool.query("SELECT COUNT(*) FROM users WHERE last_active_at >= NOW() - INTERVAL '1 day'"),
+      this.pool.query("SELECT COUNT(*) FROM users WHERE last_active_at >= NOW() - INTERVAL '7 days'"),
+      this.pool.query("SELECT COUNT(*) FROM users WHERE last_active_at >= NOW() - INTERVAL '30 days'"),
+      this.pool.query("SELECT COUNT(*) FROM users WHERE status = 'suspended'"),
+      this.pool.query("SELECT COUNT(*) FROM users WHERE status = 'banned'"),
+      this.pool.query('SELECT COUNT(*) FROM activities'),
+      this.pool.query("SELECT COUNT(*) FROM activities WHERE status = 'open'"),
+      this.pool.query("SELECT COUNT(*) FROM activities WHERE status = 'completed'"),
+      this.pool.query("SELECT COUNT(*) FROM activities WHERE status = 'cancelled'"),
+      this.pool.query("SELECT COUNT(*) FROM activities WHERE status = 'removed'"),
+      this.pool.query('SELECT COUNT(*) FROM reviews'),
+      this.pool.query('SELECT COUNT(*) FROM reports'),
+      this.pool.query("SELECT COUNT(*) FROM reports WHERE status = 'pending'")
+    ]);
+
+    return {
+      totalUsers: parseInt(uTotal.rows[0]?.count) || 0,
+      activeUsersDaily: parseInt(uDaily.rows[0]?.count) || 0,
+      activeUsersWeekly: parseInt(uWeekly.rows[0]?.count) || 0,
+      activeUsersMonthly: parseInt(uMonthly.rows[0]?.count) || 0,
+      suspendedUsers: parseInt(uSuspended.rows[0]?.count) || 0,
+      bannedUsers: parseInt(uBanned.rows[0]?.count) || 0,
+      totalActivities: parseInt(aTotal.rows[0]?.count) || 0,
+      openActivities: parseInt(aOpen.rows[0]?.count) || 0,
+      completedActivities: parseInt(aCompleted.rows[0]?.count) || 0,
+      cancelledActivities: parseInt(aCancelled.rows[0]?.count) || 0,
+      removedActivities: parseInt(aRemoved.rows[0]?.count) || 0,
+      totalReviews: parseInt(rTotal.rows[0]?.count) || 0,
+      totalReports: parseInt(repTotal.rows[0]?.count) || 0,
+      pendingReports: parseInt(repPending.rows[0]?.count) || 0
     };
   }
 }

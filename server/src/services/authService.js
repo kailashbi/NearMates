@@ -72,6 +72,26 @@ export class AuthService {
       throw err;
     }
 
+    if (user.status === 'banned') {
+      const err = new Error(`Account permanently banned. Reason: ${user.banReason || 'Violation of Community Safety Guidelines'}`);
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (user.status === 'suspended') {
+      const isStillSuspended = user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+      if (isStillSuspended) {
+        const err = new Error(`Account temporarily suspended until ${new Date(user.suspendedUntil).toLocaleDateString()}. Reason: ${user.suspensionReason || 'Community policy violation'}`);
+        err.statusCode = 403;
+        throw err;
+      } else {
+        user.status = 'active';
+        user.suspendedUntil = null;
+        user.suspensionReason = null;
+      }
+    }
+
+    user.lastActiveAt = new Date().toISOString();
     const profile = await repo.getProfileByUserId(user.userId);
     const token = this.generateToken(user, profile);
 

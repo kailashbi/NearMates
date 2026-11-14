@@ -7,6 +7,7 @@ import chatRoutes from './chatRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
 import reviewRoutes from './reviewRoutes.js';
 import adminRoutes from './adminRoutes.js';
+import reportRoutes from './reportRoutes.js';
 import healthRoutes from './healthRoutes.js';
 import { UserController } from '../controllers/userController.js';
 
@@ -38,6 +39,7 @@ router.use('/discovery', discoveryRoutes);
 router.use('/chat', chatRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/reviews', reviewRoutes);
+router.use('/reports', reportRoutes);
 router.use('/admin', adminRoutes);
 
 // Direct shortcut endpoints for compatibility with both mobile and web patterns

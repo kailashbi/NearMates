@@ -6,7 +6,8 @@ import {
   DEMO_MEMBERSHIPS,
   DEMO_MESSAGES,
   DEMO_NOTIFICATIONS,
-  DEMO_REVIEWS
+  DEMO_REVIEWS,
+  DEMO_REPORTS
 } from '../../seeds/demoData.js';
 import { calculateHaversineDistanceKm } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
@@ -22,7 +23,7 @@ export class InMemoryRepository extends IRepository {
     this.messages = JSON.parse(JSON.stringify(DEMO_MESSAGES));
     this.notifications = JSON.parse(JSON.stringify(DEMO_NOTIFICATIONS));
     this.reviews = JSON.parse(JSON.stringify(DEMO_REVIEWS));
-    this.reports = [];
+    this.reports = JSON.parse(JSON.stringify(DEMO_REPORTS || []));
     this.blocks = [];
     this.conversations = [];
     this.directMessages = [];
@@ -40,6 +41,11 @@ export class InMemoryRepository extends IRepository {
       email: userData.email.toLowerCase(),
       passwordHash: userData.passwordHash,
       role: userData.role || 'user',
+      status: userData.status || 'active',
+      banReason: userData.banReason || null,
+      suspendedUntil: userData.suspendedUntil || null,
+      suspensionReason: userData.suspensionReason || null,
+      warningCount: userData.warningCount || 0,
       displayName: userData.displayName || 'New Explorer',
       bio: userData.bio || '',
       avatarUrl: userData.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
@@ -53,6 +59,7 @@ export class InMemoryRepository extends IRepository {
       interests: userData.interests || [],
       rating: 5.0,
       reviewCount: 0,
+      lastActiveAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
     this.users.push(newUser);
@@ -78,9 +85,35 @@ export class InMemoryRepository extends IRepository {
     let result = [...this.users];
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      result = result.filter(u => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+      result = result.filter(u =>
+        u.displayName?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.userId?.toLowerCase().includes(q)
+      );
     }
-    return result;
+    if (filters.status && filters.status !== 'all') {
+      result = result.filter(u => (u.status || 'active') === filters.status);
+    }
+    if (filters.role && filters.role !== 'all') {
+      result = result.filter(u => u.role === filters.role);
+    }
+
+    // Attach reports count and user properties
+    const mapped = result.map(u => {
+      const reportsAgainst = this.reports.filter(r => r.reportedProfileId === u.profileId);
+      const profile = this._sanitizeProfile(u);
+      return {
+        ...profile,
+        email: u.email,
+        reportsCount: reportsAgainst.length,
+        hasReports: reportsAgainst.length > 0
+      };
+    });
+
+    if (filters.reportedOnly === 'true' || filters.reportedOnly === true) {
+      return mapped.filter(u => u.reportsCount > 0);
+    }
+    return mapped;
   }
 
   // --- Profiles ---
@@ -559,44 +592,331 @@ export class InMemoryRepository extends IRepository {
   }
 
   async createReport(reportData) {
+    const reporter = this.users.find(u => u.profileId === reportData.reporterProfileId);
+    let reportedName = null;
+    let reportedAvatar = null;
+    let activityTitle = null;
+
+    if (reportData.reportedProfileId) {
+      const rep = this.users.find(u => u.profileId === reportData.reportedProfileId);
+      if (rep) {
+        reportedName = rep.displayName;
+        reportedAvatar = rep.avatarUrl;
+      }
+    }
+    if (reportData.activityId) {
+      const act = this.activities.find(a => a.activityId === reportData.activityId);
+      if (act) {
+        activityTitle = act.title;
+        if (!reportData.reportedProfileId) {
+          reportData.reportedProfileId = act.hostProfileId;
+          const host = this.users.find(u => u.profileId === act.hostProfileId);
+          if (host) {
+            reportedName = host.displayName;
+            reportedAvatar = host.avatarUrl;
+          }
+        }
+      }
+    }
+
     const report = {
-      reportId: `rep-${Date.now()}`,
+      reportId: `rep-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       reporterProfileId: reportData.reporterProfileId,
+      reporterName: reporter ? reporter.displayName : 'Member',
+      reporterAvatar: reporter ? reporter.avatarUrl : null,
       reportedProfileId: reportData.reportedProfileId || null,
+      reportedName,
+      reportedAvatar,
       activityId: reportData.activityId || null,
+      activityTitle,
+      category: reportData.category || 'other',
       reason: reportData.reason,
       description: reportData.description || '',
+      evidenceUrl: reportData.evidenceUrl || '',
+      evidenceText: reportData.evidenceText || '',
       status: 'pending',
-      createdAt: new Date().toISOString()
+      adminNotes: '',
+      actionTaken: 'none',
+      moderatedBy: null,
+      moderatedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    this.reports.push(report);
+    this.reports.unshift(report);
     return report;
   }
 
-  async listReports(status = null) {
-    if (status) return this.reports.filter(r => r.status === status);
-    return this.reports;
+  async listReports(filters = {}) {
+    let result = [...this.reports];
+    if (filters.status && filters.status !== 'all') {
+      result = result.filter(r => r.status === filters.status);
+    }
+    if (filters.category && filters.category !== 'all') {
+      result = result.filter(r => r.category === filters.category);
+    }
+    return result;
+  }
+
+  async getReportById(reportId) {
+    return this.reports.find(r => r.reportId === reportId) || null;
   }
 
   async updateReportStatus(reportId, status) {
     const r = this.reports.find(rep => rep.reportId === reportId);
     if (r) {
       r.status = status;
+      r.updatedAt = new Date().toISOString();
       return r;
     }
     return null;
   }
 
+  async resolveReport(reportId, updateData) {
+    const r = this.reports.find(rep => rep.reportId === reportId);
+    if (!r) throw new Error('Report not found.');
+
+    r.status = updateData.status || 'resolved';
+    if (updateData.adminNotes !== undefined) r.adminNotes = updateData.adminNotes;
+    if (updateData.actionTaken !== undefined) r.actionTaken = updateData.actionTaken;
+    if (updateData.moderatedBy !== undefined) r.moderatedBy = updateData.moderatedBy;
+    r.moderatedAt = new Date().toISOString();
+    r.updatedAt = new Date().toISOString();
+
+    if (r.reporterProfileId) {
+      await this.createNotification({
+        recipientProfileId: r.reporterProfileId,
+        type: 'report_updated',
+        title: 'Safety Report Update',
+        message: `Your report regarding "${r.reason}" has been reviewed by moderation (${r.status}). Thank you for keeping NearMates safe!`
+      });
+    }
+
+    return r;
+  }
+
+  // --- Admin Moderation & Management Actions ---
+  async banUser(userId, reason, adminId = null) {
+    const user = await this.findUserById(userId);
+    if (!user) throw new Error('User not found.');
+    user.status = 'banned';
+    user.banReason = reason;
+    user.bannedAt = new Date().toISOString();
+    user.bannedBy = adminId;
+    user.isDiscoverable = false;
+    user.availabilityStatus = 'offline';
+
+    await this.createNotification({
+      recipientProfileId: user.profileId,
+      type: 'account_banned',
+      title: 'Account Permanently Banned',
+      message: `Your NearMates account was permanently banned by moderation. Reason: ${reason}`
+    });
+
+    return this._sanitizeProfile(user);
+  }
+
+  async suspendUser(userId, suspendedUntil, reason, adminId = null) {
+    const user = await this.findUserById(userId);
+    if (!user) throw new Error('User not found.');
+    user.status = 'suspended';
+    user.suspendedUntil = suspendedUntil;
+    user.suspensionReason = reason;
+    user.suspendedAt = new Date().toISOString();
+    user.suspendedBy = adminId;
+    user.isDiscoverable = false;
+    user.availabilityStatus = 'offline';
+
+    await this.createNotification({
+      recipientProfileId: user.profileId,
+      type: 'account_suspended',
+      title: 'Account Suspended',
+      message: `Your account is suspended until ${new Date(suspendedUntil).toLocaleDateString()}. Reason: ${reason}`
+    });
+
+    return this._sanitizeProfile(user);
+  }
+
+  async unsuspendUser(userId) {
+    const user = await this.findUserById(userId);
+    if (!user) throw new Error('User not found.');
+    user.status = 'active';
+    user.suspendedUntil = null;
+    user.suspensionReason = null;
+    user.banReason = null;
+    user.isDiscoverable = true;
+    user.availabilityStatus = 'available';
+
+    await this.createNotification({
+      recipientProfileId: user.profileId,
+      type: 'account_reactivated',
+      title: 'Account Reinstated',
+      message: 'Your NearMates account suspension/ban has been lifted. You can now participate in activities again.'
+    });
+
+    return this._sanitizeProfile(user);
+  }
+
+  async warnUser(userId, reason, adminId = null) {
+    const user = await this.findUserById(userId);
+    if (!user) throw new Error('User not found.');
+    user.warningCount = (user.warningCount || 0) + 1;
+
+    await this.createNotification({
+      recipientProfileId: user.profileId,
+      type: 'moderation_warning',
+      title: `Formal Moderation Warning (${user.warningCount}/3)`,
+      message: `Warning issued by moderation team: ${reason}. Repeated community violations may lead to account suspension.`
+    });
+
+    return this._sanitizeProfile(user);
+  }
+
+  async listActivitiesAdmin(filters = {}) {
+    let result = [...this.activities];
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter(a =>
+        a.title.toLowerCase().includes(q) ||
+        a.description?.toLowerCase().includes(q) ||
+        a.locationName?.toLowerCase().includes(q) ||
+        a.categoryName?.toLowerCase().includes(q)
+      );
+    }
+    if (filters.status && filters.status !== 'all') {
+      result = result.filter(a => a.status === filters.status);
+    }
+    if (filters.category && filters.category !== 'all') {
+      result = result.filter(a => a.categoryId === filters.category);
+    }
+
+    return result.map(a => {
+      const host = this.users.find(u => u.profileId === a.hostProfileId);
+      const participantMembers = this.memberships.filter(m => m.activityId === a.activityId && m.status === 'approved');
+      const reports = this.reports.filter(r => r.activityId === a.activityId);
+      return {
+        ...a,
+        hostName: host ? host.displayName : (a.hostName || 'Host'),
+        hostAvatar: host ? host.avatarUrl : a.hostAvatar,
+        hostEmail: host ? host.email : null,
+        approvedParticipantsCount: participantMembers.length + 1,
+        pendingRequestsCount: this.memberships.filter(m => m.activityId === a.activityId && m.status === 'requested').length,
+        reportsCount: reports.length
+      };
+    });
+  }
+
+  async getActivityWithParticipants(activityId) {
+    const activity = this.activities.find(a => a.activityId === activityId);
+    if (!activity) return null;
+    const host = this.users.find(u => u.profileId === activity.hostProfileId);
+    const members = this.memberships.filter(m => m.activityId === activityId);
+    const reports = this.reports.filter(r => r.activityId === activityId);
+
+    const detailedMembers = members.map(m => {
+      const user = this.users.find(u => u.profileId === m.profileId);
+      return {
+        ...m,
+        displayName: user ? user.displayName : 'Member',
+        email: user ? user.email : null,
+        avatarUrl: user ? user.avatarUrl : null,
+        rating: user ? user.rating : 5.0
+      };
+    });
+
+    return {
+      activity: {
+        ...activity,
+        hostName: host ? host.displayName : activity.hostName,
+        hostEmail: host ? host.email : null,
+        hostAvatar: host ? host.avatarUrl : activity.hostAvatar
+      },
+      participants: detailedMembers,
+      reports
+    };
+  }
+
+  async moderateActivity(activityId, action, reason, adminId = null) {
+    const activity = this.activities.find(a => a.activityId === activityId);
+    if (!activity) throw new Error('Activity not found.');
+
+    if (action === 'remove') {
+      activity.status = 'removed';
+      activity.moderationNotes = reason;
+      activity.removedAt = new Date().toISOString();
+      activity.moderatedBy = adminId;
+    } else if (action === 'cancel') {
+      activity.status = 'cancelled';
+      activity.cancellationReason = reason;
+      activity.cancelledAt = new Date().toISOString();
+      activity.moderatedBy = adminId;
+    }
+
+    // Notify host
+    await this.createNotification({
+      recipientProfileId: activity.hostProfileId,
+      type: 'activity_moderated',
+      title: action === 'remove' ? 'Activity Removed by Moderation' : 'Activity Cancelled by Moderation',
+      message: `Your activity "${activity.title}" was ${action === 'remove' ? 'removed for community guidelines violations' : 'cancelled as fraudulent/unsafe'}. Reason: ${reason}`,
+      activityId: activity.activityId
+    });
+
+    // Notify approved participants
+    const approved = this.memberships.filter(m => m.activityId === activityId && m.status === 'approved');
+    for (const member of approved) {
+      if (member.profileId !== activity.hostProfileId) {
+        await this.createNotification({
+          recipientProfileId: member.profileId,
+          type: 'activity_cancelled',
+          title: `Activity Cancelled: ${activity.title}`,
+          message: `The activity "${activity.title}" has been cancelled by platform moderation. Reason: ${reason}`,
+          activityId: activity.activityId
+        });
+      }
+    }
+
+    return activity;
+  }
+
   // --- Admin Analytics ---
   async getAdminStats() {
+    const now = Date.now();
+    const oneDay = 1000 * 60 * 60 * 24;
+    const sevenDays = oneDay * 7;
+    const thirtyDays = oneDay * 30;
+
+    const activeDaily = this.users.filter(u => {
+      const ts = new Date(u.lastActiveAt || u.createdAt).getTime();
+      return (now - ts) <= oneDay || u.availabilityStatus === 'available';
+    }).length;
+
+    const activeWeekly = this.users.filter(u => {
+      const ts = new Date(u.lastActiveAt || u.createdAt).getTime();
+      return (now - ts) <= sevenDays || u.availabilityStatus === 'available';
+    }).length;
+
+    const activeMonthly = this.users.filter(u => {
+      const ts = new Date(u.lastActiveAt || u.createdAt).getTime();
+      return (now - ts) <= thirtyDays;
+    }).length;
+
     return {
       totalUsers: this.users.length,
-      activeUsers: this.users.filter(u => u.availabilityStatus === 'available').length,
+      activeUsersDaily: activeDaily,
+      activeUsersWeekly: activeWeekly,
+      activeUsersMonthly: activeMonthly,
+      suspendedUsers: this.users.filter(u => u.status === 'suspended').length,
+      bannedUsers: this.users.filter(u => u.status === 'banned').length,
       totalActivities: this.activities.length,
       openActivities: this.activities.filter(a => a.status === 'open').length,
       completedActivities: this.activities.filter(a => a.status === 'completed').length,
+      cancelledActivities: this.activities.filter(a => a.status === 'cancelled').length,
+      removedActivities: this.activities.filter(a => a.status === 'removed').length,
       totalReviews: this.reviews.length,
-      pendingReports: this.reports.filter(r => r.status === 'pending').length
+      totalReports: this.reports.length,
+      pendingReports: this.reports.filter(r => r.status === 'pending').length,
+      investigatingReports: this.reports.filter(r => r.status === 'investigating').length,
+      resolvedReports: this.reports.filter(r => r.status === 'resolved').length,
+      rejectedReports: this.reports.filter(r => r.status === 'rejected').length
     };
   }
 
@@ -619,6 +939,12 @@ export class InMemoryRepository extends IRepository {
       rating: user.rating,
       reviewCount: user.reviewCount,
       role: user.role,
+      status: user.status || 'active',
+      warningCount: user.warningCount || 0,
+      banReason: user.banReason || null,
+      suspendedUntil: user.suspendedUntil || null,
+      suspensionReason: user.suspensionReason || null,
+      lastActiveAt: user.lastActiveAt || user.createdAt,
       createdAt: user.createdAt
     };
   }

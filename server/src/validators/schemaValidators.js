@@ -69,9 +69,45 @@ export const reviewSchema = Joi.object({
 });
 
 export const reportSchema = Joi.object({
-  reportedProfileId: Joi.string().allow(null),
-  activityId: Joi.string().allow(null),
-  reason: Joi.string().min(3).max(100).required(),
-  description: Joi.string().max(1000).allow('', null)
+  reportedProfileId: Joi.string().allow(null, ''),
+  activityId: Joi.string().allow(null, ''),
+  category: Joi.string().valid(
+    'fake_profile',
+    'harassment',
+    'spam',
+    'inappropriate_photo',
+    'suspicious_activity',
+    'abusive_message',
+    'other'
+  ).default('other'),
+  reason: Joi.string().min(3).max(150).required().trim(),
+  description: Joi.string().max(2000).allow('', null).trim(),
+  evidenceUrl: Joi.string().allow('', null).trim(),
+  evidenceText: Joi.string().max(2000).allow('', null).trim()
+});
+
+export const banUserSchema = Joi.object({
+  reason: Joi.string().min(5).max(500).required().trim()
+});
+
+export const suspendUserSchema = Joi.object({
+  days: Joi.number().integer().min(1).max(365).default(7),
+  reason: Joi.string().min(5).max(500).required().trim()
+});
+
+export const warnUserSchema = Joi.object({
+  reason: Joi.string().min(5).max(500).required().trim()
+});
+
+export const moderateActivitySchema = Joi.object({
+  action: Joi.string().valid('remove', 'cancel').required(),
+  reason: Joi.string().min(5).max(500).required().trim()
+});
+
+export const resolveReportSchema = Joi.object({
+  status: Joi.string().valid('investigating', 'resolved', 'rejected').required(),
+  adminNotes: Joi.string().max(1000).allow('', null).trim(),
+  actionTaken: Joi.string().valid('none', 'warning_issued', 'activity_removed', 'user_suspended', 'user_banned', 'report_rejected').default('none'),
+  suspensionDays: Joi.number().integer().min(1).max(365).optional()
 });
 

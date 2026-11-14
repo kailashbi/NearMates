@@ -61,8 +61,19 @@ export class IRepository {
   async unblockUser(blockerProfileId, blockedProfileId) { throw new Error('Not implemented'); }
   async isUserBlocked(profileId1, profileId2) { throw new Error('Not implemented'); }
   async createReport(reportData) { throw new Error('Not implemented'); }
-  async listReports(status) { throw new Error('Not implemented'); }
+  async listReports(filters) { throw new Error('Not implemented'); }
+  async getReportById(reportId) { throw new Error('Not implemented'); }
   async updateReportStatus(reportId, status) { throw new Error('Not implemented'); }
+  async resolveReport(reportId, updateData) { throw new Error('Not implemented'); }
+
+  // Admin User & Activity Management
+  async banUser(userId, reason, adminId) { throw new Error('Not implemented'); }
+  async suspendUser(userId, suspendedUntil, reason, adminId) { throw new Error('Not implemented'); }
+  async unsuspendUser(userId) { throw new Error('Not implemented'); }
+  async warnUser(userId, reason, adminId) { throw new Error('Not implemented'); }
+  async listActivitiesAdmin(filters) { throw new Error('Not implemented'); }
+  async getActivityWithParticipants(activityId) { throw new Error('Not implemented'); }
+  async moderateActivity(activityId, action, reason, adminId) { throw new Error('Not implemented'); }
 
   // Platform Analytics (Admin)
   async getAdminStats() { throw new Error('Not implemented'); }

@@ -8,7 +8,13 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'banned')),
+    ban_reason TEXT,
+    suspended_until TIMESTAMPTZ,
+    suspension_reason TEXT,
+    warning_count INT NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -63,7 +69,9 @@ CREATE TABLE IF NOT EXISTS activities (
     estimated_cost NUMERIC(10, 2) DEFAULT 0 CHECK (estimated_cost >= 0),
     visibility VARCHAR(16) NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'invite_only')),
     join_policy VARCHAR(16) NOT NULL DEFAULT 'approval' CHECK (join_policy IN ('approval', 'auto_join')),
-    status VARCHAR(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'full', 'completed', 'cancelled')),
+    status VARCHAR(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'full', 'completed', 'cancelled', 'removed')),
+    cancellation_reason TEXT,
+    moderation_notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT activities_valid_time CHECK (ends_at IS NULL OR ends_at > starts_at),
@@ -119,9 +127,18 @@ CREATE TABLE IF NOT EXISTS reports (
     reporter_profile_id UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
     reported_profile_id UUID REFERENCES profiles(profile_id) ON DELETE SET NULL,
     activity_id UUID REFERENCES activities(activity_id) ON DELETE SET NULL,
-    reason VARCHAR(100) NOT NULL,
+    message_id UUID REFERENCES activity_messages(message_id) ON DELETE SET NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'other',
+    reason VARCHAR(150) NOT NULL,
     description TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    evidence_url TEXT,
+    evidence_text TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'investigating', 'resolved', 'rejected', 'dismissed')),
+    admin_notes TEXT,
+    action_taken VARCHAR(50) DEFAULT 'none' CHECK (action_taken IN ('none', 'warning_issued', 'activity_removed', 'user_suspended', 'user_banned', 'report_rejected')),
+    moderated_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    moderated_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

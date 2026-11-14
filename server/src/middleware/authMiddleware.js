@@ -35,6 +35,26 @@ export async function requireAuth(req, res, next) {
       });
     }
 
+    if (user.status === 'banned') {
+      return res.status(403).json({
+        statusCode: 403,
+        error: 'Forbidden',
+        message: `Account permanently banned. Reason: ${user.banReason || 'Violation of Community Guidelines'}`
+      });
+    }
+
+    if (user.status === 'suspended') {
+      const isStillSuspended = user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+      if (isStillSuspended) {
+        return res.status(403).json({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: `Account suspended until ${new Date(user.suspendedUntil).toLocaleDateString()}. Reason: ${user.suspensionReason || 'Community policy violation'}`
+        });
+      }
+    }
+
+    user.lastActiveAt = new Date().toISOString();
     const profile = await repo.getProfileByUserId(user.userId);
 
     req.user = {
