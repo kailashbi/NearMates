@@ -1,16 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { User, MapPin, Sparkles, Check, ArrowLeft, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { processImageFile } from '../../utils/imageUtils';
+import {
+  User,
+  MapPin,
+  Sparkles,
+  Check,
+  ArrowLeft,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  Camera,
+  Upload,
+  X,
+  Link as LinkIcon
+} from 'lucide-react';
 
 export default function EditProfilePage() {
   const { profile, updateProfileState } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl || '');
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const [age, setAge] = useState(profile?.age || '');
   const [locationName, setLocationName] = useState(profile?.locationName || '');
   const [searchRadiusKm, setSearchRadiusKm] = useState(profile?.searchRadiusKm || 15);
@@ -40,6 +57,28 @@ export default function EditProfilePage() {
     }
     loadInterests();
   }, []);
+
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError('');
+    setIsProcessingImage(true);
+    try {
+      const optimizedDataUrl = await processImageFile(file, 400, 400, 0.85);
+      setAvatarUrl(optimizedDataUrl);
+    } catch (err) {
+      setError(err.message || 'Failed to process selected image.');
+    } finally {
+      setIsProcessingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setAvatarUrl('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const toggleInterest = (id) => {
     setSelectedInterests(prev =>
@@ -87,7 +126,7 @@ export default function EditProfilePage() {
 
       <div className="bg-white rounded-card border border-slate-border p-6 sm:p-8 shadow-card">
         <h1 className="text-2xl font-black text-navy mb-1">Edit Profile</h1>
-        <p className="text-xs text-slate-500 mb-6">Keep your details up to date for better nearby matching.</p>
+        <p className="text-xs text-slate-500 mb-6">Keep your details and photo up to date for better nearby matching.</p>
 
         {error && (
           <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-btn text-xs text-rose-700 flex items-center space-x-2">
@@ -103,7 +142,97 @@ export default function EditProfilePage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Profile Picture Upload & Preview */}
+          <div className="p-4 bg-slate-50 rounded-card border border-slate-200/80 flex flex-col sm:flex-row items-center gap-5">
+            <div className="relative group">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-20 h-20 rounded-full border-2 border-slate-300 hover:border-primary cursor-pointer overflow-hidden flex items-center justify-center bg-white shadow-sm transition-all"
+                title="Click to change profile picture"
+              >
+                <img
+                  src={avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80'}
+                  alt="Profile Avatar"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingImage}
+                className="absolute bottom-0 right-0 w-7 h-7 bg-primary hover:bg-primary-hover text-white rounded-full flex items-center justify-center shadow-md border-2 border-white transition-all transform hover:scale-105"
+                title="Upload new photo"
+              >
+                {isProcessingImage ? (
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex-1 text-center sm:text-left">
+              <h4 className="text-xs font-bold text-navy">Profile Picture</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Upload a photo so nearby mates recognize you at activities.
+              </p>
+
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mt-2.5">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageFileChange}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:border-primary text-primary hover:bg-primary-light rounded-btn text-xs font-bold transition-colors flex items-center space-x-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Image</span>
+                </button>
+
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-btn font-semibold transition-colors flex items-center space-x-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Remove Photo</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowUrlInput(!showUrlInput)}
+                  className="text-xs text-slate-500 hover:text-navy underline font-medium"
+                >
+                  {showUrlInput ? 'Hide URL field' : 'Use image URL'}
+                </button>
+              </div>
+
+              {showUrlInput && (
+                <div className="mt-3">
+                  <div className="relative">
+                    <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="url"
+                      value={avatarUrl}
+                      onChange={(e) => setAvatarUrl(e.target.value)}
+                      placeholder="https://example.com/avatar.jpg"
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-btn text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Display Name</label>
             <input
@@ -125,17 +254,6 @@ export default function EditProfilePage() {
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-btn text-xs font-medium focus:bg-white focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Avatar Image URL</label>
-            <input
-              type="url"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-              placeholder="https://..."
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-btn text-xs font-medium focus:bg-white focus:outline-none"
             />
           </div>
 
@@ -237,4 +355,3 @@ export default function EditProfilePage() {
     </div>
   );
 }
-

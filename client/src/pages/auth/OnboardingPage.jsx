@@ -1,18 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { Sparkles, Check, ArrowRight, Heart } from 'lucide-react';
+import { processImageFile } from '../../utils/imageUtils';
+import { Sparkles, Check, ArrowRight, Heart, Camera, Upload, X, User } from 'lucide-react';
 
 export default function OnboardingPage() {
   const { profile, updateProfileState } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [availableInterests, setAvailableInterests] = useState([]);
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+
+  useEffect(() => {
+    if (profile?.avatarUrl) {
+      setAvatarUrl(profile.avatarUrl);
+    }
+  }, [profile]);
 
   useEffect(() => {
     async function loadInterests() {
@@ -28,6 +38,27 @@ export default function OnboardingPage() {
     loadInterests();
   }, []);
 
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingImage(true);
+    try {
+      const optimizedDataUrl = await processImageFile(file, 400, 400, 0.85);
+      setAvatarUrl(optimizedDataUrl);
+    } catch (err) {
+      console.error(err.message || 'Failed to process image');
+    } finally {
+      setIsProcessingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setAvatarUrl('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const toggleInterest = (id) => {
     setSelectedInterests(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -38,10 +69,14 @@ export default function OnboardingPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await api.put('/users/me', {
+      const payload = {
         bio,
         interests: selectedInterests
-      });
+      };
+      if (avatarUrl) {
+        payload.avatarUrl = avatarUrl;
+      }
+      const res = await api.put('/users/me', payload);
       updateProfileState(res.data);
       navigate('/dashboard');
     } catch (err) {
@@ -65,13 +100,89 @@ export default function OnboardingPage() {
           <div className="w-12 h-12 bg-primary-light text-primary rounded-xl flex items-center justify-center mx-auto mb-3">
             <Sparkles className="w-6 h-6" />
           </div>
-          <h2 className="text-2xl font-black text-navy">Set Up Your Profile</h2>
+          <h2 className="text-2xl font-black text-navy">Welcome to NearMates, {profile?.displayName || 'Explorer'}!</h2>
           <p className="text-xs text-slate-500 mt-1">
             Pick activities and domains you enjoy to power the Smart Matching Engine.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Avatar Preview & Upload in Onboarding */}
+          <div className="p-4 bg-slate-50 rounded-card border border-slate-200 flex items-center space-x-4">
+            <div className="relative group">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-16 h-16 rounded-full border-2 border-slate-300 hover:border-primary cursor-pointer overflow-hidden flex items-center justify-center bg-white shadow-sm transition-all"
+                title="Change photo"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={profile?.displayName || 'Avatar'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-8 h-8 text-slate-400" />
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingImage}
+                className="absolute bottom-0 right-0 w-6 h-6 bg-primary hover:bg-primary-hover text-white rounded-full flex items-center justify-center shadow-md border-2 border-white transition-all"
+                title="Upload photo"
+              >
+                {isProcessingImage ? (
+                  <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera className="w-3 h-3" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex-1">
+              <h4 className="text-xs font-bold text-navy">
+                {avatarUrl ? 'Profile Photo Ready' : 'Add a Profile Photo'}
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {avatarUrl
+                  ? 'Your profile picture is all set! You can change it anytime.'
+                  : 'Add a picture so companions recognize you when attending activities.'}
+              </p>
+              <div className="flex items-center space-x-2 mt-1.5">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageFileChange}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-primary font-bold hover:underline flex items-center space-x-1"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>{avatarUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                </button>
+                {avatarUrl && (
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="text-xs text-rose-500 font-bold hover:underline flex items-center space-x-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Remove</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Short Bio
@@ -141,4 +252,3 @@ export default function OnboardingPage() {
     </div>
   );
 }
-

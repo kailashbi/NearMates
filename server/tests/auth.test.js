@@ -12,14 +12,16 @@ test('Authentication: Login with seeded demo user Alex Turner', async () => {
   assert.equal(res.profile.displayName, 'Alex Turner');
 });
 
-test('Authentication: Register a new user with hashed password and profile', async () => {
+test('Authentication: Register a new user with hashed password, profile and custom avatar', async () => {
   await initializeRepository();
 
   const email = `testuser_${Date.now()}@nearmates.com`;
+  const avatarUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   const res = await AuthService.register({
     email,
     password: 'Password123!',
     displayName: 'Test Explorer',
+    avatarUrl,
     bio: 'Looking for tennis partners',
     locationName: 'Uptown',
     latitude: 37.77,
@@ -30,10 +32,12 @@ test('Authentication: Register a new user with hashed password and profile', asy
   assert.ok(res.token, 'Should return token');
   assert.equal(res.user.email, email);
   assert.equal(res.profile.displayName, 'Test Explorer');
+  assert.equal(res.profile.avatarUrl, avatarUrl);
 
   // Verify can login with newly created user
   const loginRes = await AuthService.login(email, 'Password123!');
   assert.ok(loginRes.token);
+  assert.equal(loginRes.profile.avatarUrl, avatarUrl);
 });
 
 test('Authentication: Reject invalid password', async () => {

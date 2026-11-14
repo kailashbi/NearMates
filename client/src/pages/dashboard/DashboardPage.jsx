@@ -74,17 +74,31 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Welcome Banner */}
       <div className="bg-white rounded-card border border-slate-border p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-xs font-bold text-primary mb-1">
-            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
-            <span>Active Discovery Zone</span>
+        <div className="flex items-center space-x-4">
+          <Link to="/profile" className="relative group shrink-0" title="View Profile">
+            <img
+              src={profile?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80'}
+              alt={profile?.displayName || 'My Profile'}
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-slate-200 group-hover:border-primary transition-all shadow-sm"
+            />
+            <span
+              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                availability === 'available' ? 'bg-emerald-500' : 'bg-slate-400'
+              }`}
+            />
+          </Link>
+          <div>
+            <div className="flex items-center space-x-2 text-xs font-bold text-primary mb-1">
+              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
+              <span>Active Discovery Zone</span>
+            </div>
+            <h1 className="text-2xl font-black text-navy tracking-tight">
+              Hello, {profile?.displayName || 'Explorer'}! 👋
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Discover like-minded people and spontaneous activities near {profile?.locationName || 'you'}.
+            </p>
           </div>
-          <h1 className="text-2xl font-black text-navy tracking-tight">
-            Hello, {profile?.displayName || 'Explorer'}! 👋
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Discover like-minded people and spontaneous activities near {profile?.locationName || 'you'}.
-          </p>
         </div>
 
         {/* Status & Radius Controls */}

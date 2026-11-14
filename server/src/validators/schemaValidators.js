@@ -4,6 +4,7 @@ export const registerSchema = Joi.object({
   email: Joi.string().email().required().trim().lowercase(),
   password: Joi.string().min(8).max(100).required(),
   displayName: Joi.string().min(2).max(50).required().trim(),
+  avatarUrl: Joi.string().allow('', null),
   bio: Joi.string().max(500).allow('', null),
   age: Joi.number().integer().min(13).max(120).allow(null),
   locationName: Joi.string().max(150).allow('', null),
@@ -20,7 +21,7 @@ export const loginSchema = Joi.object({
 export const updateProfileSchema = Joi.object({
   displayName: Joi.string().min(2).max(50).trim(),
   bio: Joi.string().max(500).allow('', null),
-  avatarUrl: Joi.string().uri().allow('', null),
+  avatarUrl: Joi.string().allow('', null),
   age: Joi.number().integer().min(13).max(120).allow(null),
   locationName: Joi.string().max(150).allow('', null),
   latitude: Joi.number().min(-90).max(90).allow(null),

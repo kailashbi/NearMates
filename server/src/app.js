@@ -41,8 +41,8 @@ export function createApp() {
   app.use(globalLimiter);
 
   // Body Parsing
-  app.use(express.json({ limit: '2mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // API Routes (mounted both at /api and /api/v1)
   app.use('/api', routes);

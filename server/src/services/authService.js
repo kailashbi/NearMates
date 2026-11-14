@@ -33,6 +33,7 @@ export class AuthService {
       email: data.email,
       passwordHash,
       displayName: data.displayName,
+      avatarUrl: data.avatarUrl,
       bio: data.bio,
       age: data.age,
       locationName: data.locationName,
