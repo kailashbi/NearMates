@@ -10,3 +10,4 @@ router.post('/', ReportController.createReport);
 router.get('/my', ReportController.getMyReports);
 
 export default router;
+

@@ -67,9 +67,8 @@ export default function ProfilePage() {
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-slate-200 shadow-sm"
               />
               <span
-                className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white ${
-                  profile.availabilityStatus === 'available' ? 'bg-emerald-500' : 'bg-slate-400'
-                }`}
+                className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white ${profile.availabilityStatus === 'available' ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
                 title={`Status: ${profile.availabilityStatus}`}
               />
             </div>
@@ -186,9 +185,8 @@ export default function ProfilePage() {
                     {[...Array(5)].map((_, i) => (
                       <Star
                         key={i}
-                        className={`w-3 h-3 ${
-                          i < rev.rating ? 'text-amber-500 fill-amber-500' : 'text-slate-200'
-                        }`}
+                        className={`w-3 h-3 ${i < rev.rating ? 'text-amber-500 fill-amber-500' : 'text-slate-200'
+                          }`}
                       />
                     ))}
                   </div>

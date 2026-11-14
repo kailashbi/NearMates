@@ -30,3 +30,4 @@ export class ReportService {
     return all.filter(r => r.reporterProfileId === reporterProfileId);
   }
 }
+

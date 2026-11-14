@@ -99,3 +99,4 @@ test('Reports & Moderation: User reports, admin investigation, evidence review, 
   assert.equal(resolved.actionTaken, 'warning_issued');
   assert.ok(resolved.adminNotes);
 });
+
