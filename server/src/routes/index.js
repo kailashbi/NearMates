@@ -12,6 +12,24 @@ import { UserController } from '../controllers/userController.js';
 
 const router = Router();
 
+// Base API index - eliminates "Cannot GET /api"
+router.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'NearMates REST API is online',
+    version: '1.0.0',
+    documentation: {
+      health: '/api/health',
+      auth: '/api/auth',
+      users: '/api/users',
+      activities: '/api/activities',
+      discovery: '/api/discovery',
+      chat: '/api/chat',
+      notifications: '/api/notifications'
+    }
+  });
+});
+
 router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
@@ -26,4 +44,3 @@ router.use('/admin', adminRoutes);
 router.get('/interests', UserController.getAllInterests);
 
 export default router;
-

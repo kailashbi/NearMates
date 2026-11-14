@@ -1,13 +1,7 @@
-
 # ==========================================
 # NearMates - Root Git Ignore
-# Backend-only contribution
+# Full-stack contribution
 # ==========================================
-
-# ------------------------------------------
-# Frontend - Managed by frontend collaborator
-# ------------------------------------------
-/client/
 
 # ------------------------------------------
 # Existing mobile application
@@ -15,7 +9,7 @@
 /language-main/
 
 # ------------------------------------------
-# Documentation - separate contribution
+# Documentation (managed separately)
 # ------------------------------------------
 /docs/
 
