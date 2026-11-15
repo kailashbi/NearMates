@@ -35,24 +35,59 @@ export default function ProfilePage() {
     async function loadProfile() {
       if (!targetId) return;
       setLoading(true);
+      setError('');
       try {
-        const [profileRes, reviewsRes] = await Promise.all([
+        const [profileRes, reviewsRes] = await Promise.allSettled([
           api.get(`/users/${targetId}`),
           api.get(`/reviews/user/${targetId}`)
         ]);
-        setProfile(profileRes.data);
-        setReviews(reviewsRes.data.items || []);
+
+        if (profileRes.status === 'fulfilled' && profileRes.value.data) {
+          setProfile(profileRes.value.data);
+        } else if (isMe && myProfile) {
+          setProfile(myProfile);
+        } else {
+          setError('Profile not found.');
+        }
+
+        if (reviewsRes.status === 'fulfilled') {
+          setReviews(reviewsRes.value.data?.items || []);
+        } else {
+          setReviews([]);
+        }
       } catch (err) {
-        setError('Failed to load profile.');
+        if (isMe && myProfile) {
+          setProfile(myProfile);
+        } else {
+          setError('Failed to load profile.');
+        }
       } finally {
         setLoading(false);
       }
     }
     loadProfile();
-  }, [targetId]);
+  }, [targetId, isMe, myProfile]);
 
   if (loading) return <LoadingSpinner text="Loading member profile..." />;
-  if (!profile) return <p className="text-sm text-center p-8">Profile not found.</p>;
+  if (!profile) {
+    return (
+      <div className="max-w-md mx-auto py-16 text-center space-y-4">
+        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+          <User className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-navy">Profile Not Found</h2>
+        <p className="text-xs text-slate-500">
+          The member profile you are looking for does not exist or may have been removed.
+        </p>
+        <Link
+          to="/people"
+          className="inline-flex items-center px-4 py-2 bg-primary text-white text-xs font-bold rounded-btn hover:bg-primary-hover transition-colors"
+        >
+          Explore Nearby People
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

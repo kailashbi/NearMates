@@ -129,12 +129,12 @@ export class SupabaseRepository extends IRepository {
       `SELECT profile_id, user_id, display_name, bio, avatar_url, age, location_name,
               availability_status, search_radius_km, is_discoverable, rating,
               ST_Y(location_point::geometry) as latitude, ST_X(location_point::geometry) as longitude
-       FROM profiles WHERE profile_id = $1`,
+       FROM profiles WHERE profile_id = $1 OR user_id = $1`,
       [profileId]
     );
     if (!res.rows[0]) return null;
     const row = res.rows[0];
-    const interests = await this.getUserInterests(profileId);
+    const interests = await this.getUserInterests(row.profile_id);
     return {
       profileId: row.profile_id,
       userId: row.user_id,
@@ -705,6 +705,53 @@ export class SupabaseRepository extends IRepository {
       [profileId]
     );
     return true;
+  }
+
+  // --- Reviews ---
+  async getReviewsForProfile(profileId) {
+    try {
+      const res = await this.pool.query(
+        `SELECT r.review_id as "reviewId", r.activity_id as "activityId",
+                r.reviewer_profile_id as "reviewerProfileId", r.reviewee_profile_id as "revieweeProfileId",
+                r.rating, r.comment, r.created_at as "createdAt",
+                p.display_name as "reviewerName", p.avatar_url as "reviewerAvatar"
+         FROM reviews r
+         JOIN profiles p ON p.profile_id = r.reviewer_profile_id
+         WHERE r.reviewee_profile_id = $1
+         ORDER BY r.created_at DESC`,
+        [profileId]
+      );
+      return res.rows;
+    } catch (err) {
+      logger.warn(`Could not load reviews for profile ${profileId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  async createReview(reviewData) {
+    const res = await this.pool.query(
+      `INSERT INTO reviews (activity_id, reviewer_profile_id, reviewee_profile_id, rating, comment)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING review_id as "reviewId", activity_id as "activityId",
+                 reviewer_profile_id as "reviewerProfileId", reviewee_profile_id as "revieweeProfileId",
+                 rating, comment, created_at as "createdAt"`,
+      [reviewData.activityId, reviewData.reviewerProfileId, reviewData.revieweeProfileId, reviewData.rating, reviewData.comment || '']
+    );
+
+    // Update aggregate rating and count on profile
+    try {
+      await this.pool.query(
+        `UPDATE profiles
+         SET rating = (SELECT ROUND(AVG(rating), 1) FROM reviews WHERE reviewee_profile_id = $1),
+             review_count = (SELECT COUNT(*) FROM reviews WHERE reviewee_profile_id = $1)
+         WHERE profile_id = $1`,
+        [reviewData.revieweeProfileId]
+      );
+    } catch (e) {
+      // Best-effort rating aggregate
+    }
+
+    return res.rows[0];
   }
 
   async listUsers(filters = {}) {
