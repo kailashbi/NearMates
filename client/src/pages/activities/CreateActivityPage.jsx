@@ -46,12 +46,13 @@ export default function CreateActivityPage() {
     async function loadInterests() {
       try {
         const res = await api.get('/interests');
-        setCategories(res.data.interests || []);
-        if (res.data.interests?.length > 0) {
-          setCategoryId(res.data.interests[0].interestId);
+        const list = res.data.interests || [];
+        setCategories(list);
+        if (list.length > 0) {
+          setCategoryId(prev => (prev && list.some(c => c.interestId === prev) ? prev : list[0].interestId));
         }
       } catch (err) {
-        console.error(err);
+        console.error('Failed to load interests:', err);
       } finally {
         setLoadingCats(false);
       }
@@ -59,9 +60,31 @@ export default function CreateActivityPage() {
     loadInterests();
   }, []);
 
-  // Smart defaults adapted from mobile app's CreateBroadcastSheet
+  // Smart defaults adapted to match whatever interests exist in the active database
   const applySmartPreset = (presetCategory) => {
-    setCategoryId(presetCategory);
+    // Keywords for matching against loaded database categories
+    const keywordMap = {
+      sports_badminton: ['badminton', 'tennis', 'sport', 'fitness'],
+      sports_football: ['football', 'soccer', 'sport', 'fitness'],
+      games_board: ['board', 'game', 'gaming', 'entertainment'],
+      fitness_cycling: ['cycling', 'bike', 'running', 'fitness', 'sport']
+    };
+
+    const keywords = keywordMap[presetCategory] || [presetCategory];
+
+    // Find the best match in the user's actual database categories
+    const matched = categories.find(c =>
+      c.interestId === presetCategory ||
+      keywords.some(k =>
+        c.interestId.toLowerCase().includes(k) ||
+        c.name.toLowerCase().includes(k) ||
+        c.category.toLowerCase().includes(k)
+      )
+    );
+
+    const targetId = matched ? matched.interestId : (categories[0]?.interestId || presetCategory);
+    setCategoryId(targetId);
+
     if (presetCategory === 'sports_badminton') {
       setTitle('Friendly Badminton Doubles Match');
       setDescription('Looking for 3 players for doubles. Synthetic wooden court booked for 2 hours. Bring indoor shoes!');

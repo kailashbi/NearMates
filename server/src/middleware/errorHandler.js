@@ -12,6 +12,24 @@ export function errorHandler(err, req, res, next) {
     });
   }
 
+  // PostgreSQL Foreign Key constraint violation
+  if (err.code === '23503') {
+    return res.status(400).json({
+      statusCode: 400,
+      error: 'Foreign Key Violation',
+      message: 'The selected category or entity does not exist in the database. Please select an available category.'
+    });
+  }
+
+  // PostgreSQL Check constraint violation
+  if (err.code === '23514') {
+    return res.status(400).json({
+      statusCode: 400,
+      error: 'Constraint Violation',
+      message: 'Invalid activity values. Please verify start time, end time, and participant numbers.'
+    });
+  }
+
   const statusCode = err.statusCode || err.status || 500;
   const message = process.env.NODE_ENV === 'production' && statusCode === 500
     ? 'An unexpected error occurred. Please try again later.'
