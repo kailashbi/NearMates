@@ -64,35 +64,18 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* Quick Demo Personas Bar */}
-            <div className="p-4 bg-white/80 backdrop-blur-sm rounded-card border border-slate-border max-w-xl mx-auto shadow-sm">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
-                ⚡ Test Instantly with Demo Accounts:
+            {/* Quick Demo Admin Bar */}
+            <div className="p-3 bg-white/80 backdrop-blur-sm rounded-card border border-slate-border max-w-md mx-auto shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">
+                ⚡ One-Click Admin Demo Login:
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex items-center justify-center">
                 <button
-                  onClick={() => handleDemoSignIn('alex@nearmates.com')}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-primary hover:text-white rounded-full transition-colors"
+                  onClick={() => handleDemoSignIn('admin@nearmates.com')}
+                  className="px-4 py-2 text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 rounded-btn transition-colors flex items-center space-x-2"
                 >
-                  🏸 Alex (Host)
-                </button>
-                <button
-                  onClick={() => handleDemoSignIn('sarah@nearmates.com')}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-primary hover:text-white rounded-full transition-colors"
-                >
-                  🎲 Sarah (Board Games)
-                </button>
-                <button
-                  onClick={() => handleDemoSignIn('marcus@nearmates.com')}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-primary hover:text-white rounded-full transition-colors"
-                >
-                  🚴 Marcus (Cycling)
-                </button>
-                <button
-                  onClick={() => handleDemoSignIn('priya@nearmates.com')}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-primary hover:text-white rounded-full transition-colors"
-                >
-                  🥐 Priya (Brunch)
+                  <span>🛡️ Sign In as Admin</span>
+                  <span className="text-[10px] text-slate-500 font-normal">(admin@nearmates.com)</span>
                 </button>
               </div>
             </div>

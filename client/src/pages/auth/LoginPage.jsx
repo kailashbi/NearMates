@@ -49,34 +49,17 @@ export default function LoginPage() {
             <UserCheck className="w-4 h-4 text-amber-700" />
             <span>One-Click Demo Credentials:</span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => fillDemoAccount('alex@nearmates.com')}
-              className="text-left px-2 py-1 bg-white hover:bg-amber-100 rounded border border-amber-200 text-amber-950 font-medium truncate transition-colors"
-            >
-              🏸 Alex Turner (Host)
-            </button>
-            <button
-              type="button"
-              onClick={() => fillDemoAccount('sarah@nearmates.com')}
-              className="text-left px-2 py-1 bg-white hover:bg-amber-100 rounded border border-amber-200 text-amber-950 font-medium truncate transition-colors"
-            >
-              🎲 Sarah Chen
-            </button>
-            <button
-              type="button"
-              onClick={() => fillDemoAccount('marcus@nearmates.com')}
-              className="text-left px-2 py-1 bg-white hover:bg-amber-100 rounded border border-amber-200 text-amber-950 font-medium truncate transition-colors"
-            >
-              🚴 Marcus Rivera
-            </button>
+          <div>
             <button
               type="button"
               onClick={() => fillDemoAccount('admin@nearmates.com')}
-              className="text-left px-2 py-1 bg-white hover:bg-amber-100 rounded border border-amber-200 text-amber-950 font-medium truncate transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 bg-white hover:bg-amber-100 rounded border border-amber-200 text-amber-950 font-semibold text-xs transition-colors"
             >
-              🛡️ Admin Account
+              <span className="flex items-center space-x-2">
+                <span>🛡️ Admin Account</span>
+                <span className="text-[11px] text-slate-500 font-normal">(admin@nearmates.com)</span>
+              </span>
+              <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono font-bold">Auto-Fill</span>
             </button>
           </div>
         </div>

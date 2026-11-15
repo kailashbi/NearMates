@@ -85,61 +85,24 @@ export default function Navbar() {
         <div className="flex items-center space-x-3">
           {isAuthenticated ? (
             <>
-              {/* Quick Persona Switcher in Demo Mode */}
-              <div className="relative hidden lg:block">
-                <button
-                  onClick={() => setDemoSwitchOpen(!demoSwitchOpen)}
-                  className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-btn text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition-colors"
-                  title="Switch between pre-loaded demo personas"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Switch Persona</span>
-                  <ChevronDown className="w-3 h-3 text-amber-700" />
-                </button>
-
-                {demoSwitchOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-card shadow-dropdown border border-slate-border py-2 z-50">
-                    <div className="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Demo Accounts
-                    </div>
-                    <button
-                      onClick={() => handleDemoSwitch('alex@nearmates.com')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col"
-                    >
-                      <span className="font-bold text-navy">Alex Turner (Host)</span>
-                      <span className="text-[11px] text-slate-500">Badminton, Running, Tech</span>
-                    </button>
-                    <button
-                      onClick={() => handleDemoSwitch('sarah@nearmates.com')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col"
-                    >
-                      <span className="font-bold text-navy">Sarah Chen</span>
-                      <span className="text-[11px] text-slate-500">Board Games, Hiking</span>
-                    </button>
-                    <button
-                      onClick={() => handleDemoSwitch('marcus@nearmates.com')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col"
-                    >
-                      <span className="font-bold text-navy">Marcus Rivera</span>
-                      <span className="text-[11px] text-slate-500">Cycling, Football</span>
-                    </button>
-                    <button
-                      onClick={() => handleDemoSwitch('priya@nearmates.com')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col"
-                    >
-                      <span className="font-bold text-navy">Priya Sharma</span>
-                      <span className="text-[11px] text-slate-500">Brunch, Badminton</span>
-                    </button>
-                    <div className="border-t border-slate-100 my-1" />
-                    <button
-                      onClick={() => handleDemoSwitch('admin@nearmates.com')}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex flex-col text-primary font-semibold"
-                    >
-                      <span>Admin Account</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+              {/* Quick Admin Persona Switcher / Status */}
+              {user?.role !== 'admin' ? (
+                <div className="relative hidden lg:block">
+                  <button
+                    onClick={() => handleDemoSwitch('admin@nearmates.com')}
+                    className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-btn text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition-colors"
+                    title="Switch to Admin Account"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Switch to Admin</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-btn text-xs font-semibold bg-primary-light text-primary border border-primary/20">
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin Mode</span>
+                </div>
+              )}
 
               {/* Create Activity Button */}
               <Link

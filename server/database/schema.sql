@@ -161,26 +161,48 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_profile_id);
 
 -- 10. Reports & Moderation
+
 CREATE TABLE IF NOT EXISTS reports (
     report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    reporter_profile_id UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
-    reported_profile_id UUID REFERENCES profiles(profile_id) ON DELETE SET NULL,
-    activity_id UUID REFERENCES activities(activity_id) ON DELETE SET NULL,
-    message_id UUID REFERENCES messages(message_id) ON DELETE SET NULL,
+
+    reporter_profile_id UUID NOT NULL
+        REFERENCES profiles(profile_id) ON DELETE CASCADE,
+
+    reported_profile_id UUID
+        REFERENCES profiles(profile_id) ON DELETE SET NULL,
+
+    activity_id UUID
+        REFERENCES activities(activity_id) ON DELETE SET NULL,
+
+    message_id UUID
+        REFERENCES activity_messages(message_id) ON DELETE SET NULL,
+
     category VARCHAR(50) NOT NULL DEFAULT 'other',
     reason VARCHAR(150) NOT NULL,
     description TEXT,
     evidence_url TEXT,
     evidence_text TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'investigating', 'resolved', 'rejected', 'dismissed')),
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN (
+            'pending', 'investigating', 'resolved',
+            'rejected', 'dismissed'
+        )),
+
     admin_notes TEXT,
-    action_taken VARCHAR(50) DEFAULT 'none' CHECK (action_taken IN ('none', 'warning_issued', 'activity_removed', 'user_suspended', 'user_banned', 'report_rejected')),
+
+    action_taken VARCHAR(50) DEFAULT 'none'
+        CHECK (action_taken IN (
+            'none', 'warning_issued', 'activity_removed',
+            'user_suspended', 'user_banned', 'report_rejected'
+        )),
+
     moderated_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
     moderated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_reported_profile ON reports(reported_profile_id);
 CREATE INDEX IF NOT EXISTS idx_reports_activity ON reports(activity_id);
-
