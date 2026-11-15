@@ -483,6 +483,35 @@ export class SupabaseRepository extends IRepository {
   }
 
   // --- Chat ---
+  async ensureDirectChatTables() {
+    if (this._chatTablesReady) return;
+    try {
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS direct_conversations (
+            conversation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            member_one UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+            member_two UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT direct_conversations_unique_members UNIQUE (member_one, member_two)
+        );
+        CREATE TABLE IF NOT EXISTS direct_messages (
+            message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES direct_conversations(conversation_id) ON DELETE CASCADE,
+            sender_id UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+            content VARCHAR(2000) NOT NULL CHECK (length(btrim(content)) >= 1),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_direct_conv_m1 ON direct_conversations(member_one);
+        CREATE INDEX IF NOT EXISTS idx_direct_conv_m2 ON direct_conversations(member_two);
+        CREATE INDEX IF NOT EXISTS idx_direct_messages_conv ON direct_messages(conversation_id, created_at DESC);
+      `);
+      this._chatTablesReady = true;
+    } catch (err) {
+      logger.warn(`Could not auto-create direct chat tables: ${err.message}`);
+    }
+  }
+
   async createActivityMessage(activityId, senderProfileId, content) {
     const res = await this.pool.query(
       `INSERT INTO activity_messages (activity_id, sender_id, content)
@@ -505,13 +534,130 @@ export class SupabaseRepository extends IRepository {
               p.display_name as "senderName", p.avatar_url as "senderAvatar",
               m.content, m.created_at as "createdAt"
        FROM activity_messages m
-       JOIN profiles p ON p.user_id = m.sender_id
+       JOIN profiles p ON p.profile_id = m.sender_id
        WHERE m.activity_id = $1
        ORDER BY m.created_at ASC
        LIMIT $2 OFFSET $3`,
       [activityId, limit, offset]
     );
     return { items: res.rows, pagination: { limit, offset, total: res.rows.length } };
+  }
+
+  async getOrCreateDirectConversation(profileId1, profileId2) {
+    await this.ensureDirectChatTables();
+    const [m1, m2] = [profileId1, profileId2].sort();
+    let res = await this.pool.query(
+      `SELECT conversation_id as "conversationId", member_one as "member1", member_two as "member2", updated_at as "updatedAt"
+       FROM direct_conversations
+       WHERE member_one = $1 AND member_two = $2`,
+      [m1, m2]
+    );
+
+    if (res.rows.length === 0) {
+      res = await this.pool.query(
+        `INSERT INTO direct_conversations (member_one, member_two)
+         VALUES ($1, $2)
+         ON CONFLICT (member_one, member_two) DO UPDATE SET updated_at = NOW()
+         RETURNING conversation_id as "conversationId", member_one as "member1", member_two as "member2", updated_at as "updatedAt"`,
+        [m1, m2]
+      );
+    }
+
+    const partnerId = profileId1 === m1 ? m2 : m1;
+    const partner = await this.getProfileById(partnerId);
+
+    return {
+      conversationId: res.rows[0].conversationId,
+      partner: partner ? {
+        profileId: partner.profileId,
+        displayName: partner.displayName,
+        avatarUrl: partner.avatarUrl,
+        availabilityStatus: partner.availabilityStatus
+      } : null,
+      lastMessage: null,
+      updatedAt: res.rows[0].updatedAt
+    };
+  }
+
+  async getConversationsForProfile(profileId) {
+    await this.ensureDirectChatTables();
+    try {
+      const res = await this.pool.query(
+        `SELECT c.conversation_id as "conversationId", c.member_one as "member1", c.member_two as "member2", c.updated_at as "updatedAt",
+                (SELECT json_build_object('messageId', m.message_id, 'content', m.content, 'createdAt', m.created_at, 'senderId', m.sender_id)
+                 FROM direct_messages m
+                 WHERE m.conversation_id = c.conversation_id
+                 ORDER BY m.created_at DESC LIMIT 1) as "lastMessage"
+         FROM direct_conversations c
+         WHERE c.member_one = $1 OR c.member_two = $1
+         ORDER BY c.updated_at DESC`,
+        [profileId]
+      );
+
+      const items = await Promise.all(res.rows.map(async row => {
+        const partnerId = row.member1 === profileId ? row.member2 : row.member1;
+        const partner = await this.getProfileById(partnerId);
+        return {
+          conversationId: row.conversationId,
+          partner: partner ? {
+            profileId: partner.profileId,
+            displayName: partner.displayName,
+            avatarUrl: partner.avatarUrl,
+            availabilityStatus: partner.availabilityStatus
+          } : null,
+          lastMessage: row.lastMessage || null,
+          updatedAt: row.updatedAt
+        };
+      }));
+
+      return items;
+    } catch (err) {
+      logger.warn(`Could not load direct conversations: ${err.message}`);
+      return [];
+    }
+  }
+
+  async createDirectMessage(conversationId, senderProfileId, content) {
+    await this.ensureDirectChatTables();
+    const res = await this.pool.query(
+      `INSERT INTO direct_messages (conversation_id, sender_id, content)
+       VALUES ($1, $2, $3)
+       RETURNING message_id as "messageId", conversation_id as "conversationId", sender_id as "senderProfileId", content, created_at as "createdAt"`,
+      [conversationId, senderProfileId, content]
+    );
+
+    await this.pool.query(
+      `UPDATE direct_conversations SET updated_at = NOW() WHERE conversation_id = $1`,
+      [conversationId]
+    );
+
+    const profile = await this.getProfileById(senderProfileId);
+    return {
+      ...res.rows[0],
+      senderName: profile?.displayName || 'User',
+      senderAvatar: profile?.avatarUrl
+    };
+  }
+
+  async getDirectMessages(conversationId, limit = 50, offset = 0) {
+    await this.ensureDirectChatTables();
+    try {
+      const res = await this.pool.query(
+        `SELECT m.message_id as "messageId", m.conversation_id as "conversationId", m.sender_id as "senderProfileId",
+                p.display_name as "senderName", p.avatar_url as "senderAvatar",
+                m.content, m.created_at as "createdAt"
+         FROM direct_messages m
+         JOIN profiles p ON p.profile_id = m.sender_id
+         WHERE m.conversation_id = $1
+         ORDER BY m.created_at ASC
+         LIMIT $2 OFFSET $3`,
+        [conversationId, limit, offset]
+      );
+      return { items: res.rows, pagination: { limit, offset, total: res.rows.length } };
+    } catch (err) {
+      logger.warn(`Could not load direct messages: ${err.message}`);
+      return { items: [], pagination: { limit, offset, total: 0 } };
+    }
   }
 
   // --- Notifications ---

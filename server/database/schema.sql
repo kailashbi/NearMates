@@ -206,3 +206,26 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_reported_profile ON reports(reported_profile_id);
 CREATE INDEX IF NOT EXISTS idx_reports_activity ON reports(activity_id);
+
+-- 11. Direct 1-on-1 Conversations
+CREATE TABLE IF NOT EXISTS direct_conversations (
+    conversation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_one UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+    member_two UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT direct_conversations_unique_members UNIQUE (member_one, member_two)
+);
+CREATE INDEX IF NOT EXISTS idx_direct_conv_m1 ON direct_conversations(member_one);
+CREATE INDEX IF NOT EXISTS idx_direct_conv_m2 ON direct_conversations(member_two);
+
+-- 12. Direct Messages
+CREATE TABLE IF NOT EXISTS direct_messages (
+    message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES direct_conversations(conversation_id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
+    content VARCHAR(2000) NOT NULL CHECK (length(btrim(content)) >= 1),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_conv ON direct_messages(conversation_id, created_at DESC);
+

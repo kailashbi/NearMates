@@ -46,38 +46,60 @@ export default function ChatPage() {
     async function initChat() {
       setLoading(true);
       try {
-        const [convRes, actRes] = await Promise.all([
+        const [convResult, actResult] = await Promise.allSettled([
           api.get('/chat/conversations'),
           api.get('/activities')
         ]);
-        setConversations(convRes.data.items || []);
 
-        // Filter activities where user is host or member
-        const myActs = (actRes.data.items || []).filter(
-          a => a.hostProfileId === profile?.profileId || a.isHost
+        const convItems = convResult.status === 'fulfilled' ? (convResult.value.data?.items || []) : [];
+        const actItems = actResult.status === 'fulfilled' ? (actResult.value.data?.items || []) : [];
+
+        setConversations(convItems);
+
+        // Filter activities where user is host or member (or fallback to all active activities)
+        const myActs = actItems.filter(
+          a => a.hostProfileId === profile?.profileId || a.isHost || a.myStatus === 'approved'
         );
-        setMyActivities(actRes.data.items || []);
+        const activitiesToShow = myActs.length > 0 ? myActs : actItems;
+        setMyActivities(activitiesToShow);
 
         // If activityParam is passed in URL, load it
         if (activityParam) {
-          const act = actRes.data.items?.find(a => a.activityId === activityParam);
+          const act = actItems.find(a => a.activityId === activityParam);
           if (act) {
             selectActivityChat(act);
           } else {
-            // Fetch direct
-            const single = await api.get(`/activities/${activityParam}`);
-            selectActivityChat(single.data);
+            try {
+              const single = await api.get(`/activities/${activityParam}`);
+              if (single.data) selectActivityChat(single.data);
+            } catch (e) {
+              console.error('Failed to load activity:', e);
+            }
           }
         } else if (userParam) {
-          // Start direct conversation
-          const startRes = await api.post('/chat/conversations', { targetProfileId: userParam });
-          const targetProf = await api.get(`/users/${userParam}`);
-          selectDirectChat({
-            conversationId: startRes.data.conversationId,
-            partner: targetProf.data
-          });
-        } else if (actRes.data.items?.length > 0) {
-          selectActivityChat(actRes.data.items[0]);
+          // Start or load direct conversation with this user
+          try {
+            const startRes = await api.post('/chat/conversations', { targetProfileId: userParam });
+            let partnerInfo = startRes.data.partner;
+            if (!partnerInfo?.displayName) {
+              try {
+                const targetProf = await api.get(`/users/${userParam}`);
+                partnerInfo = targetProf.data;
+              } catch (e) {
+                // Ignore fallback
+              }
+            }
+            selectDirectChat({
+              conversationId: startRes.data.conversationId,
+              partner: partnerInfo
+            });
+          } catch (e) {
+            console.error('Failed to start direct conversation:', e);
+          }
+        } else if (activitiesToShow.length > 0) {
+          selectActivityChat(activitiesToShow[0]);
+        } else if (convItems.length > 0) {
+          selectDirectChat(convItems[0]);
         }
       } catch (err) {
         console.error('Failed to init chat:', err);
@@ -86,7 +108,7 @@ export default function ChatPage() {
       }
     }
     initChat();
-  }, [activityParam, userParam, profile]);
+  }, [activityParam, userParam, profile?.profileId]);
 
   const selectActivityChat = async (act) => {
     setActiveDirect(null);
