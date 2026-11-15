@@ -62,7 +62,9 @@ Thumbs.db
 .nyc_output/
 
 # ------------------------------------------
-# Temporary files
+# Temporary files & Local PDF generators
 # ------------------------------------------
 *.tmp
 *.temp
+*.pdf
+generate*.py
